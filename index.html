@@ -15,8 +15,8 @@
         }
 
         button {
-            font-size: 20px;
-            padding: 15px 30px;
+            font-size: 22px;
+            padding: 15px 35px;
             cursor: pointer;
         }
 
@@ -24,6 +24,10 @@
             width: 90%;
             max-width: 700px;
             margin-top: 30px;
+        }
+
+        #status {
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -35,17 +39,27 @@
 
     <button id="start">Start</button>
 
-    <br>
+    <p id="status"></p>
 
     <video id="preview" autoplay muted playsinline></video>
+
+    <!-- Put sound.mp3 in the same GitHub repository -->
+    <audio id="customSound" src="sound.mp3" preload="auto"></audio>
 
     <script>
         const button = document.getElementById("start");
         const video = document.getElementById("preview");
+        const status = document.getElementById("status");
+        const customSound = document.getElementById("customSound");
 
         button.onclick = async function () {
+
+            button.disabled = true;
+            status.textContent = "Requesting camera permission...";
+
             try {
-                // Explicitly request camera permission
+
+                // Ask the user for camera permission
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: true,
                     audio: false
@@ -53,27 +67,34 @@
 
                 video.srcObject = stream;
 
-                // Full-scale Web Audio beep
-                const audioContext = new AudioContext();
+                /*
+                 * Play the custom MP3.
+                 *
+                 * Browser/device volume still determines the
+                 * actual maximum speaker volume.
+                 */
+                customSound.volume = 1.0;
+                customSound.currentTime = 0;
 
-                await audioContext.resume();
+                await customSound.play();
 
-                const oscillator = audioContext.createOscillator();
-                const gain = audioContext.createGain();
+                status.textContent = "Recording for 5 seconds...";
 
-                oscillator.type = "square";
-                oscillator.frequency.value = 1000;
+                // Choose a supported recording format
+                let mimeType = "";
 
-                // Maximum Web Audio gain
-                gain.gain.value = 1.0;
+                if (MediaRecorder.isTypeSupported("video/mp4")) {
+                    mimeType = "video/mp4";
+                } else if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9")) {
+                    mimeType = "video/webm;codecs=vp9";
+                } else if (MediaRecorder.isTypeSupported("video/webm")) {
+                    mimeType = "video/webm";
+                }
 
-                oscillator.connect(gain);
-                gain.connect(audioContext.destination);
+                const recorder = mimeType
+                    ? new MediaRecorder(stream, { mimeType })
+                    : new MediaRecorder(stream);
 
-                oscillator.start();
-
-                // Record camera
-                const recorder = new MediaRecorder(stream);
                 const chunks = [];
 
                 recorder.ondataavailable = function (event) {
@@ -83,45 +104,86 @@
                 };
 
                 recorder.onstop = function () {
+
+                    const actualType =
+                        recorder.mimeType ||
+                        mimeType ||
+                        "video/webm";
+
                     const blob = new Blob(chunks, {
-                        type: "video/webm"
+                        type: actualType
                     });
 
                     const url = URL.createObjectURL(blob);
 
-                    // Automatically download the recording
+                    const extension =
+                        actualType.includes("mp4")
+                            ? "mp4"
+                            : "webm";
+
+                    // Download the recording
                     const download = document.createElement("a");
+
                     download.href = url;
-                    download.download = "camera-recording.webm";
+                    download.download =
+                        "camera-recording-" +
+                        Date.now() +
+                        "." +
+                        extension;
 
                     document.body.appendChild(download);
                     download.click();
                     download.remove();
 
                     // Stop camera
-                    stream.getTracks().forEach(track => track.stop());
+                    stream.getTracks().forEach(track => {
+                        track.stop();
+                    });
 
                     video.srcObject = null;
 
-                    // Stop beep
-                    oscillator.stop();
-                    audioContext.close();
+                    status.textContent =
+                        "Recording saved to the device.";
 
-                    URL.revokeObjectURL(url);
+                    button.disabled = false;
+
+                    setTimeout(() => {
+                        URL.revokeObjectURL(url);
+                    }, 10000);
+                };
+
+                recorder.onerror = function (event) {
+                    console.error("Recorder error:", event);
+
+                    stream.getTracks().forEach(track => {
+                        track.stop();
+                    });
+
+                    status.textContent =
+                        "Recording failed.";
+
+                    button.disabled = false;
                 };
 
                 recorder.start();
 
                 // Stop after exactly 5 seconds
                 setTimeout(function () {
+
                     if (recorder.state === "recording") {
                         recorder.stop();
                     }
+
                 }, 5000);
 
             } catch (error) {
-                alert("Camera permission was denied or unavailable.");
+
                 console.error(error);
+
+                status.textContent =
+                    "Camera permission was denied or unavailable.";
+
+                button.disabled = false;
             }
         };
     </script>
