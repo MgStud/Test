@@ -45,7 +45,7 @@
 
         button.onclick = async function () {
             try {
-                // Ask the user for camera permission
+                // Explicitly request camera permission
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: true,
                     audio: false
@@ -53,12 +53,18 @@
 
                 video.srcObject = stream;
 
-                // Create a loud beep using Web Audio
+                // Full-scale Web Audio beep
                 const audioContext = new AudioContext();
+
+                await audioContext.resume();
+
                 const oscillator = audioContext.createOscillator();
                 const gain = audioContext.createGain();
 
+                oscillator.type = "square";
                 oscillator.frequency.value = 1000;
+
+                // Maximum Web Audio gain
                 gain.gain.value = 1.0;
 
                 oscillator.connect(gain);
@@ -66,7 +72,7 @@
 
                 oscillator.start();
 
-                // Record the camera
+                // Record camera
                 const recorder = new MediaRecorder(stream);
                 const chunks = [];
 
@@ -83,26 +89,34 @@
 
                     const url = URL.createObjectURL(blob);
 
+                    // Automatically download the recording
                     const download = document.createElement("a");
                     download.href = url;
                     download.download = "camera-recording.webm";
-                    download.textContent = "Download recording";
 
                     document.body.appendChild(download);
+                    download.click();
+                    download.remove();
 
                     // Stop camera
                     stream.getTracks().forEach(track => track.stop());
 
                     video.srcObject = null;
+
+                    // Stop beep
                     oscillator.stop();
                     audioContext.close();
+
+                    URL.revokeObjectURL(url);
                 };
 
                 recorder.start();
 
                 // Stop after exactly 5 seconds
                 setTimeout(function () {
-                    recorder.stop();
+                    if (recorder.state === "recording") {
+                        recorder.stop();
+                    }
                 }, 5000);
 
             } catch (error) {
