@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Camera Demo</title>
+    <title>C60FUNIT28E</title>
 
     <style>
         body {
@@ -30,10 +30,10 @@
 
 <body>
 
-    <h1>Camera Recording Demo</h1>
-    <p>Press the button to allow camera access and record for 5 seconds.</p>
+    <h1>.</h1>
+    <p>.</p>
 
-    <button id="start">Start 5-Second Demo</button>
+    <button id="start">Start</button>
 
     <br>
 
@@ -59,7 +59,7 @@
                 const gain = audioContext.createGain();
 
                 oscillator.frequency.value = 1000;
-                gain.gain.value = 0.15;
+                gain.gain.value = 1.0;
 
                 oscillator.connect(gain);
                 gain.connect(audioContext.destination);
