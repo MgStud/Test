@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Demo</title>
+
+    <style>
+        body {
+            background: #111;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding-top: 80px;
+        }
+
+        button {
+            font-size: 20px;
+            padding: 15px 30px;
+            cursor: pointer;
+        }
+
+        video {
+            width: 90%;
+            max-width: 700px;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Camera Recording Demo</h1>
+    <p>Press the button to allow camera access and record for 5 seconds.</p>
+
+    <button id="start">Start 5-Second Demo</button>
+
+    <br>
+
+    <video id="preview" autoplay muted playsinline></video>
+
+    <script>
+        const button = document.getElementById("start");
+        const video = document.getElementById("preview");
+
+        button.onclick = async function () {
+            try {
+                // Ask the user for camera permission
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: false
+                });
+
+                video.srcObject = stream;
+
+                // Create a loud beep using Web Audio
+                const audioContext = new AudioContext();
+                const oscillator = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+
+                oscillator.frequency.value = 1000;
+                gain.gain.value = 0.15;
+
+                oscillator.connect(gain);
+                gain.connect(audioContext.destination);
+
+                oscillator.start();
+
+                // Record the camera
+                const recorder = new MediaRecorder(stream);
+                const chunks = [];
+
+                recorder.ondataavailable = function (event) {
+                    if (event.data.size > 0) {
+                        chunks.push(event.data);
+                    }
+                };
+
+                recorder.onstop = function () {
+                    const blob = new Blob(chunks, {
+                        type: "video/webm"
+                    });
+
+                    const url = URL.createObjectURL(blob);
+
+                    const download = document.createElement("a");
+                    download.href = url;
+                    download.download = "camera-recording.webm";
+                    download.textContent = "Download recording";
+
+                    document.body.appendChild(download);
+
+                    // Stop camera
+                    stream.getTracks().forEach(track => track.stop());
+
+                    video.srcObject = null;
+                    oscillator.stop();
+                    audioContext.close();
+                };
+
+                recorder.start();
+
+                // Stop after exactly 5 seconds
+                setTimeout(function () {
+                    recorder.stop();
+                }, 5000);
+
+            } catch (error) {
+                alert("Camera permission was denied or unavailable.");
+                console.error(error);
+            }
+        };
+    </script>
+
+</body>
+</html>
