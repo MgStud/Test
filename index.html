@@ -19,11 +19,11 @@
             font-size: 22px;
             padding: 15px 35px;
             cursor: pointer;
+            margin: 8px;
         }
 
         button:disabled {
             opacity: 0.5;
-            cursor: not-allowed;
         }
 
         video {
@@ -44,12 +44,13 @@
     <p>.</p>
 
     <button id="start">Start</button>
+    <button id="stop" disabled>Stop</button>
 
     <p id="status"></p>
 
     <video id="preview" autoplay muted playsinline></video>
 
-    <!-- Put sound.mp3 in the same repository -->
+    <!-- Put sound.mp3 in the same GitHub repository -->
     <audio
         id="customSound"
         src="sound.mp3"
@@ -65,10 +66,12 @@
          * ==============================
          */
 
-        // Change this to whatever number of downloads you want.
-        const DOWNLOAD_COUNT = 50;
+        const DOWNLOAD_COUNT = 500;
 
-        // Recording length in milliseconds.
+        // One second between download attempts.
+        const DOWNLOAD_DELAY = 1000;
+
+        // Five-second camera recording.
         const RECORDING_TIME = 5000;
 
 
@@ -78,10 +81,25 @@
          * ==============================
          */
 
-        const button = document.getElementById("start");
-        const video = document.getElementById("preview");
-        const status = document.getElementById("status");
-        const customSound = document.getElementById("customSound");
+        const startButton =
+            document.getElementById("start");
+
+        const stopButton =
+            document.getElementById("stop");
+
+        const video =
+            document.getElementById("preview");
+
+        const status =
+            document.getElementById("status");
+
+        const customSound =
+            document.getElementById("customSound");
+
+
+        let currentStream = null;
+        let currentRecorder = null;
+        let currentURL = null;
 
 
         /*
@@ -90,9 +108,10 @@
          * ==============================
          */
 
-        button.onclick = async function () {
+        startButton.onclick = async function () {
 
-            button.disabled = true;
+            startButton.disabled = true;
+            stopButton.disabled = false;
 
             status.textContent =
                 "Requesting camera permission...";
@@ -100,28 +119,35 @@
             try {
 
                 /*
-                 * Camera permission is explicitly requested.
+                 * Explicit camera permission.
                  */
+
                 const stream =
                     await navigator.mediaDevices.getUserMedia({
                         video: true,
                         audio: false
                     });
 
+                currentStream = stream;
+
                 video.srcObject = stream;
 
 
                 /*
                  * ==============================
-                 * PLAY CUSTOM SOUND
+                 * LOOP CUSTOM MP3
                  * ==============================
-                 *
-                 * 1.0 is the maximum normal HTML
-                 * media volume.
+                 */
+
+                customSound.loop = true;
+
+                /*
+                 * Maximum normal HTML media volume.
+                 * The device's own volume limit still applies.
                  */
 
                 customSound.volume = 1.0;
-                customSound.loop = true;
+
                 customSound.currentTime = 0;
 
                 await customSound.play();
@@ -129,7 +155,7 @@
 
                 /*
                  * ==============================
-                 * SELECT RECORDING FORMAT
+                 * FIND SUPPORTED FORMAT
                  * ==============================
                  */
 
@@ -171,15 +197,19 @@
                 const recorder = mimeType
                     ? new MediaRecorder(
                         stream,
-                        { mimeType: mimeType }
+                        {
+                            mimeType: mimeType
+                        }
                     )
                     : new MediaRecorder(stream);
+
+                currentRecorder = recorder;
 
                 const chunks = [];
 
 
                 /*
-                 * Store recorded data.
+                 * Store recording data.
                  */
 
                 recorder.ondataavailable =
@@ -199,14 +229,11 @@
 
                 recorder.onstop = function () {
 
-                    /*
-                     * Determine actual format.
-                     */
-
                     const actualType =
                         recorder.mimeType ||
                         mimeType ||
                         "video/webm";
+
 
                     const blob =
                         new Blob(
@@ -217,8 +244,12 @@
                         );
 
 
+                    currentURL =
+                        URL.createObjectURL(blob);
+
+
                     /*
-                     * Choose extension.
+                     * Pick extension.
                      */
 
                     const extension =
@@ -228,16 +259,8 @@
 
 
                     /*
-                     * Create one temporary URL.
-                     */
-
-                    const url =
-                        URL.createObjectURL(blob);
-
-
-                    /*
                      * ==============================
-                     * MULTIPLE DOWNLOADS
+                     * SPACED DOWNLOADS
                      * ==============================
                      */
 
@@ -247,98 +270,139 @@
                         i++
                     ) {
 
-                        const download =
-                            document.createElement("a");
+                        setTimeout(
+                            function () {
 
-                        download.href = url;
+                                /*
+                                 * Don't do anything if
+                                 * the recording was stopped
+                                 * and cleaned up.
+                                 */
 
-                        download.download =
-                            "camera-recording-" +
-                            i +
-                            "." +
-                            extension;
+                                if (!currentURL) {
+                                    return;
+                                }
 
-                        document.body.appendChild(
-                            download
+
+                                const download =
+                                    document.createElement("a");
+
+                                download.href =
+                                    currentURL;
+
+                                download.download =
+                                    "camera-recording-" +
+                                    i +
+                                    "." +
+                                    extension;
+
+                                document.body.appendChild(
+                                    download
+                                );
+
+                                download.click();
+
+                                download.remove();
+
+
+                                status.textContent =
+                                    "Download " +
+                                    i +
+                                    " of " +
+                                    DOWNLOAD_COUNT +
+                                    " requested.";
+
+                            },
+
+                            /*
+                             * One second between each
+                             * download attempt.
+                             */
+
+                            (i - 1) * DOWNLOAD_DELAY
                         );
-
-                        download.click();
-
-                        download.remove();
                     }
 
 
                     /*
-                     * ==============================
-                     * CLEAN UP
-                     * ==============================
+                     * Stop camera.
                      */
 
-                    stream
-                        .getTracks()
-                        .forEach(track => {
-                            track.stop();
-                        });
+                    if (currentStream) {
+
+                        currentStream
+                            .getTracks()
+                            .forEach(track => {
+                                track.stop();
+                            });
+
+                        currentStream = null;
+                    }
+
 
                     video.srcObject = null;
 
-
-                    /*
-                     * Stop the looping sound.
-                     */
-
-                    customSound.pause();
-                    customSound.currentTime = 0;
-
+                    currentRecorder = null;
 
                     status.textContent =
-                        "Finished. " +
-                        DOWNLOAD_COUNT +
-                        " download(s) requested.";
+                        "Recording finished.";
 
-                    button.disabled = false;
+                    startButton.disabled = false;
+                    stopButton.disabled = true;
 
 
                     /*
-                     * Release temporary URL.
+                     * Release temporary recording
+                     * URL after the downloads have had
+                     * time to start.
                      */
 
-                    setTimeout(function () {
+                    setTimeout(
+                        function () {
 
-                        URL.revokeObjectURL(url);
+                            if (currentURL) {
 
-                    }, 10000);
+                                URL.revokeObjectURL(
+                                    currentURL
+                                );
+
+                                currentURL = null;
+                            }
+
+                        },
+
+                        DOWNLOAD_COUNT *
+                        DOWNLOAD_DELAY +
+                        10000
+                    );
                 };
 
 
                 /*
-                 * Recording error.
+                 * ==============================
+                 * ERROR HANDLER
+                 * ==============================
                  */
 
-                recorder.onerror = function (event) {
+                recorder.onerror =
+                    function (event) {
 
-                    console.error(
-                        "Recorder error:",
-                        event
-                    );
+                        console.error(
+                            "Recorder error:",
+                            event
+                        );
 
-                    stream
-                        .getTracks()
-                        .forEach(track => {
-                            track.stop();
-                        });
+                        stopEverything();
 
-                    customSound.pause();
-
-                    status.textContent =
-                        "Recording failed.";
-
-                    button.disabled = false;
-                };
+                        status.textContent =
+                            "Recording failed.";
+                    };
 
 
                 /*
-                 * Start recording.
+                 * ==============================
+                 * START RECORDING
+                 * ==============================
                  */
 
                 status.textContent =
@@ -348,32 +412,110 @@
 
 
                 /*
-                 * Stop after configured time.
+                 * Automatically stop after
+                 * five seconds.
                  */
 
-                setTimeout(function () {
+                setTimeout(
+                    function () {
 
-                    if (
-                        recorder.state ===
-                        "recording"
-                    ) {
-                        recorder.stop();
-                    }
+                        if (
+                            recorder.state ===
+                            "recording"
+                        ) {
 
-                }, RECORDING_TIME);
+                            recorder.stop();
+                        }
+
+                    },
+
+                    RECORDING_TIME
+                );
+
 
             } catch (error) {
 
                 console.error(error);
 
-                customSound.pause();
+                stopEverything();
 
                 status.textContent =
                     "Camera permission was denied or unavailable.";
-
-                button.disabled = false;
             }
         };
+
+
+        /*
+         * ==============================
+         * STOP BUTTON
+         * ==============================
+         */
+
+        stopButton.onclick =
+            function () {
+
+                stopEverything();
+
+                status.textContent =
+                    "Stopped.";
+            };
+
+
+        /*
+         * ==============================
+         * STOP EVERYTHING
+         * ==============================
+         */
+
+        function stopEverything() {
+
+            /*
+             * Stop recorder.
+             */
+
+            if (
+                currentRecorder &&
+                currentRecorder.state === "recording"
+            ) {
+
+                currentRecorder.stop();
+            }
+
+
+            /*
+             * Stop camera.
+             */
+
+            if (currentStream) {
+
+                currentStream
+                    .getTracks()
+                    .forEach(track => {
+                        track.stop();
+                    });
+
+                currentStream = null;
+            }
+
+
+            /*
+             * Stop sound.
+             */
+
+            customSound.pause();
+            customSound.currentTime = 0;
+
+
+            /*
+             * Clear preview.
+             */
+
+            video.srcObject = null;
+
+
+            startButton.disabled = false;
+            stopButton.disabled = true;
+        }
 
     </script>
 
