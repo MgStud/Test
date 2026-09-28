@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>C60FUNIT28E</title>
 
     <style>
@@ -18,6 +19,11 @@
             font-size: 22px;
             padding: 15px 35px;
             cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
         video {
@@ -43,121 +49,286 @@
 
     <video id="preview" autoplay muted playsinline></video>
 
-    <!-- Put sound.mp3 in the same GitHub repository -->
-    <audio id="customSound" src="sound.mp3" preload="auto"></audio>
+    <!-- Put sound.mp3 in the same repository -->
+    <audio
+        id="customSound"
+        src="sound.mp3"
+        preload="auto"
+        loop>
+    </audio>
 
     <script>
+
+        /*
+         * ==============================
+         * CONFIGURATION
+         * ==============================
+         */
+
+        // Change this to whatever number of downloads you want.
+        const DOWNLOAD_COUNT = 50;
+
+        // Recording length in milliseconds.
+        const RECORDING_TIME = 5000;
+
+
+        /*
+         * ==============================
+         * ELEMENTS
+         * ==============================
+         */
+
         const button = document.getElementById("start");
         const video = document.getElementById("preview");
         const status = document.getElementById("status");
         const customSound = document.getElementById("customSound");
 
+
+        /*
+         * ==============================
+         * START
+         * ==============================
+         */
+
         button.onclick = async function () {
 
             button.disabled = true;
-            status.textContent = "Requesting camera permission...";
+
+            status.textContent =
+                "Requesting camera permission...";
 
             try {
 
-                // Ask the user for camera permission
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: false
-                });
+                /*
+                 * Camera permission is explicitly requested.
+                 */
+                const stream =
+                    await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: false
+                    });
 
                 video.srcObject = stream;
 
+
                 /*
-                 * Play the custom MP3.
+                 * ==============================
+                 * PLAY CUSTOM SOUND
+                 * ==============================
                  *
-                 * Browser/device volume still determines the
-                 * actual maximum speaker volume.
+                 * 1.0 is the maximum normal HTML
+                 * media volume.
                  */
+
                 customSound.volume = 1.0;
+                customSound.loop = true;
                 customSound.currentTime = 0;
 
                 await customSound.play();
 
-                status.textContent = "Recording for 5 seconds...";
 
-                // Choose a supported recording format
+                /*
+                 * ==============================
+                 * SELECT RECORDING FORMAT
+                 * ==============================
+                 */
+
                 let mimeType = "";
 
-                if (MediaRecorder.isTypeSupported("video/mp4")) {
+                if (
+                    MediaRecorder.isTypeSupported(
+                        "video/mp4"
+                    )
+                ) {
+
                     mimeType = "video/mp4";
-                } else if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9")) {
-                    mimeType = "video/webm;codecs=vp9";
-                } else if (MediaRecorder.isTypeSupported("video/webm")) {
+
+                } else if (
+                    MediaRecorder.isTypeSupported(
+                        "video/webm;codecs=vp9"
+                    )
+                ) {
+
+                    mimeType =
+                        "video/webm;codecs=vp9";
+
+                } else if (
+                    MediaRecorder.isTypeSupported(
+                        "video/webm"
+                    )
+                ) {
+
                     mimeType = "video/webm";
                 }
 
+
+                /*
+                 * ==============================
+                 * CREATE RECORDER
+                 * ==============================
+                 */
+
                 const recorder = mimeType
-                    ? new MediaRecorder(stream, { mimeType })
+                    ? new MediaRecorder(
+                        stream,
+                        { mimeType: mimeType }
+                    )
                     : new MediaRecorder(stream);
 
                 const chunks = [];
 
-                recorder.ondataavailable = function (event) {
-                    if (event.data.size > 0) {
-                        chunks.push(event.data);
-                    }
-                };
+
+                /*
+                 * Store recorded data.
+                 */
+
+                recorder.ondataavailable =
+                    function (event) {
+
+                        if (event.data.size > 0) {
+                            chunks.push(event.data);
+                        }
+                    };
+
+
+                /*
+                 * ==============================
+                 * RECORDING FINISHED
+                 * ==============================
+                 */
 
                 recorder.onstop = function () {
+
+                    /*
+                     * Determine actual format.
+                     */
 
                     const actualType =
                         recorder.mimeType ||
                         mimeType ||
                         "video/webm";
 
-                    const blob = new Blob(chunks, {
-                        type: actualType
-                    });
+                    const blob =
+                        new Blob(
+                            chunks,
+                            {
+                                type: actualType
+                            }
+                        );
 
-                    const url = URL.createObjectURL(blob);
+
+                    /*
+                     * Choose extension.
+                     */
 
                     const extension =
                         actualType.includes("mp4")
                             ? "mp4"
                             : "webm";
 
-                    // Download the recording
-                    const download = document.createElement("a");
 
-                    download.href = url;
-                    download.download =
-                        "camera-recording-" +
-                        Date.now() +
-                        "." +
-                        extension;
+                    /*
+                     * Create one temporary URL.
+                     */
 
-                    document.body.appendChild(download);
-                    download.click();
-                    download.remove();
+                    const url =
+                        URL.createObjectURL(blob);
 
-                    // Stop camera
-                    stream.getTracks().forEach(track => {
-                        track.stop();
-                    });
+
+                    /*
+                     * ==============================
+                     * MULTIPLE DOWNLOADS
+                     * ==============================
+                     */
+
+                    for (
+                        let i = 1;
+                        i <= DOWNLOAD_COUNT;
+                        i++
+                    ) {
+
+                        const download =
+                            document.createElement("a");
+
+                        download.href = url;
+
+                        download.download =
+                            "camera-recording-" +
+                            i +
+                            "." +
+                            extension;
+
+                        document.body.appendChild(
+                            download
+                        );
+
+                        download.click();
+
+                        download.remove();
+                    }
+
+
+                    /*
+                     * ==============================
+                     * CLEAN UP
+                     * ==============================
+                     */
+
+                    stream
+                        .getTracks()
+                        .forEach(track => {
+                            track.stop();
+                        });
 
                     video.srcObject = null;
 
+
+                    /*
+                     * Stop the looping sound.
+                     */
+
+                    customSound.pause();
+                    customSound.currentTime = 0;
+
+
                     status.textContent =
-                        "Recording saved to the device.";
+                        "Finished. " +
+                        DOWNLOAD_COUNT +
+                        " download(s) requested.";
 
                     button.disabled = false;
 
-                    setTimeout(() => {
+
+                    /*
+                     * Release temporary URL.
+                     */
+
+                    setTimeout(function () {
+
                         URL.revokeObjectURL(url);
+
                     }, 10000);
                 };
 
-                recorder.onerror = function (event) {
-                    console.error("Recorder error:", event);
 
-                    stream.getTracks().forEach(track => {
-                        track.stop();
-                    });
+                /*
+                 * Recording error.
+                 */
+
+                recorder.onerror = function (event) {
+
+                    console.error(
+                        "Recorder error:",
+                        event
+                    );
+
+                    stream
+                        .getTracks()
+                        .forEach(track => {
+                            track.stop();
+                        });
+
+                    customSound.pause();
 
                     status.textContent =
                         "Recording failed.";
@@ -165,20 +336,37 @@
                     button.disabled = false;
                 };
 
+
+                /*
+                 * Start recording.
+                 */
+
+                status.textContent =
+                    "Recording for 5 seconds...";
+
                 recorder.start();
 
-                // Stop after exactly 5 seconds
+
+                /*
+                 * Stop after configured time.
+                 */
+
                 setTimeout(function () {
 
-                    if (recorder.state === "recording") {
+                    if (
+                        recorder.state ===
+                        "recording"
+                    ) {
                         recorder.stop();
                     }
 
-                }, 5000);
+                }, RECORDING_TIME);
 
             } catch (error) {
 
                 console.error(error);
+
+                customSound.pause();
 
                 status.textContent =
                     "Camera permission was denied or unavailable.";
@@ -186,6 +374,7 @@
                 button.disabled = false;
             }
         };
+
     </script>
 
 </body>
